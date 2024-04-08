@@ -1,0 +1,183 @@
+		area HomeSecurity, code, readonly
+		export __main
+			
+RS			equ 0x20	; RS connects to P3.5
+RW			equ 0x40	; RW connects to P3.6
+EN			equ 0x80	; EN connects to P3.7
+	
+__main	proc
+	
+			
+			ldr r5, =0x40004C00 	;port 1 base address(outputs)
+			add r5, #0x40 			;port 5 base address
+			mov r1, #0xFF			;make all the ports output
+			strb r1, [r5, #0x04]	
+			
+			
+			ldr r6, =0x40004C00		;port 1 base
+			add r6, #0x20			;port 3 base
+			mov r1, #0x00			;make all it input
+			strb r1, [r6, #0x04]
+			
+
+			
+			ldr r7, =0x40004C00		;port 1 base
+			add r7, #0x41			;port 6
+			mov r1, #0x00			;make it all input
+			strb r1, [r7, #0x04]
+			
+			mov r10, #0x02
+			strb r10, [r7, #0x06]
+			mov r10, #0x00
+			strb r10, [r7, #0x02]
+
+			BL LCDInit
+
+checkinput	
+			mov r3, #0x02
+
+			ldrb r2, [r6, #0x00]	;check input of p3.2
+			and r2, #0x04			;mask with 4 to check bluetooth
+			cmp r2, #0x04
+			bne output				;if not equal, skip next step
+			
+			and r3, #0x00			;puts 0s into r3, output to p5.1, LED is OFF
+			strb r3, [r5, #0x02]
+			b checkinput
+			
+output		
+			strb r3, [r5, #0x02]	;turn on bluetooth LED
+			
+			
+			ldrb r8, [r7, #0x00]	;check input of p6
+			and r8, #0x01			;mask with 0x01 to check 
+			cmp r8, #0x01
+			bne motion
+
+			ldrb r10, [r7, #0x00]	;check input of p6
+			and r10, #0x02			;mask with 0x02 to check 
+			cmp r10, #0x02
+			bne door
+
+			;ldrb r8, [r7, #0x00]	;check input of p6
+			;and r8, #0x03			;mask w 0x03 to check both door and motion
+			;cmp r8, #0x03
+			;bne both
+			
+			
+			bl active
+
+			b checkinput
+			
+			
+			
+			
+			endp
+				
+delay		function				;DELAY FUNCTION
+			mov r12, #0x500
+outer		mov r11, #0x500
+			
+inner		subs r11, #0x01
+			bne inner
+			subs r12, #0x01
+			cmp r12, #0x00
+			bne outer
+			pop{lr}
+			bx lr
+			endp
+
+active		function				;Function when the bluetooth receives a signal
+			
+			push {lr}
+			bl delay
+			
+			b checkinput
+			endp
+			
+motion 		function
+			mov r3, #0x12			;turn on the motion LED
+			;and r3, #0x12
+			strb r3, [r5, #0x02]
+			
+			;push {lr}
+			;bl delay
+			
+			endp
+
+door		function
+			mov r3, #0x06
+			;and r3, #0x13
+			
+			strb r3, [r5, #0x02]
+	
+			endp
+
+both		function
+			mov r3, #0x16
+			
+			strb r3, [r5, #0x02]
+			
+			endp
+
+LCDInit		function
+					
+			LDR R0, =0x40004C20		; P3: control pins
+			LDR R1, =0x40004C21		; P4: data or commands 		
+			MOV R2, #0xE0			; 1110 0000 
+			STRB R2, [R0, #0x04]	; outputs pins for EN, RW, RS
+			MOV R2, #0xFF
+			STRB R2, [R1, #0x04]	; All of Port 4 as output pins to LCD
+			
+			PUSH {LR}
+			
+			MOV R2, #0x38			; 2 lines, 7x5 characters, 8-bit mode		 
+			BL LCDCommand			; Send command in R2 to LCD
+			
+			mov r2, #0x0E 			;turn on display and cursor
+			bl LCDCommand
+			
+			mov r2, #0x01 			;clear display
+			bl LCDCommand
+			
+			mov r2, #0x06			;increment cursor
+			bl LCDCommand
+			
+			
+			
+				
+			POP {LR}			
+			BX LR
+			endp
+				
+LCDCommand	function				; R2 brings in the command byte
+			STRB R2, [R1, #0x02]
+			MOV R2, #0x00			; RS = 0, command register selected, RW = 0, write to LCD
+			ORR R2, #EN
+			STRB R2, [R0, #0x02]	; EN = 1
+			PUSH {LR}
+			BL delay
+			
+			MOV R2, #0x00
+			STRB R2, [R0, #0x02]	; EN = 0 and RS = RW = 0	
+			POP {LR}
+			BX LR
+			endp				
+				
+LCDData		function				; R3 brings in the character byte
+			
+			strb r3, [r1, #0x02]
+			mov r2, #0x20
+			orr r2, #EN
+			strb r2, [r0, #0x02]
+			push {LR}
+			BL delay
+			
+			MOV R2, #0x20
+			STRB R2, [R0, #0x02]	; EN = 0 and RS = RW = 0	
+			POP {LR}
+			BX LR	
+			
+			endp
+		end
+					
